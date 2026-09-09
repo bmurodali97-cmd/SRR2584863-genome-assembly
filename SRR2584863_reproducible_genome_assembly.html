@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SRR2584863 — Reproducible Bacterial Genome Assembly Workflow</title>
+<style>
+:root{--bg:#0d1117;--panel:#161b22;--panel2:#0b0f14;--text:#e6edf3;--muted:#8b949e;--line:#30363d;--accent:#58a6ff;--green:#3fb950;--yellow:#d29922}
+*{box-sizing:border-box}body{margin:0;background:#0d1117;color:var(--text);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
+main{max-width:1100px;margin:auto;padding:40px 24px 80px}h1{font-size:34px;line-height:1.2;margin:0 0 10px}h2{margin-top:42px;border-bottom:1px solid var(--line);padding-bottom:8px}h3{margin-top:28px}
+.subtitle{color:var(--muted);font-size:17px}.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px;margin:18px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}.stat{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:15px}.stat b{display:block;font-size:22px}.muted{color:var(--muted)}
+code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}pre{background:#010409;border:1px solid var(--line);border-radius:8px;padding:18px;overflow:auto;position:relative;color:#e6edf3}pre code{font-size:13px;white-space:pre}
+.copy{float:right;background:#21262d;border:1px solid var(--line);color:var(--text);padding:5px 10px;border-radius:6px;cursor:pointer}.comment{color:#8b949e}.cmd{color:#79c0ff}.kw{color:#ff7b72}
+table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line)}th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line)}th{color:#fff;background:#21262d}
+.ok{color:var(--green);font-weight:600}.warn{color:var(--yellow);font-weight:600}.toc a{color:var(--accent);text-decoration:none}.footer{margin-top:55px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}
+.note{border-left:3px solid var(--accent);padding:10px 15px;background:var(--panel2);margin:15px 0}.small{font-size:13px}
+</style>
+<script>
+function copyCode(btn){
+ const pre=btn.parentElement; const code=pre.querySelector("code").innerText;
+ navigator.clipboard.writeText(code).then(()=>{btn.textContent="Copied";setTimeout(()=>btn.textContent="Copy",1000)})
+}
+</script>
+</head>
+<body>
+<main>
+<h1>Reproducible Bacterial Genome Assembly &amp; Quality Assessment</h1>
+<div class="subtitle">Prepared by <b>Murodali Boboqulov</b> · Dataset: <b>SRR2584863</b> · Illumina paired-end sequencing · command-line workflow</div>
+
+<div class="card">
+<b>Purpose.</b> This document records the computational environment, software versions, parameters, commands, input/output paths, and quality-control results used for the bacterial genome assembly project. The code blocks are intentionally copy-friendly and organized as a GitHub-style workflow.
+</div>
+
+<h2 id="toc">Contents</h2>
+<div class="card toc">
+<a href="#env">1. Computational environment</a><br>
+<a href="#data">2. Dataset and directory structure</a><br>
+<a href="#fastqc">3. Raw-read QC — FastQC</a><br>
+<a href="#fastp">4. Read filtering — fastp</a><br>
+<a href="#spades">5. Genome assembly — SPAdes</a><br>
+<a href="#quast">6. Assembly statistics — QUAST</a><br>
+<a href="#checkm2">7. Completeness/contamination — CheckM2</a><br>
+<a href="#busco">8. Conserved-gene completeness — BUSCO</a><br>
+<a href="#coverage">9. Coverage estimate</a><br>
+<a href="#summary">10. Final results and reproducibility notes</a>
+</div>
+
+<h2 id="env">1. Computational environment</h2>
+<table>
+<tr><th>Component</th><th>Recorded value</th></tr>
+<tr><td>Operating system</td><td>Linux 6.17.0-14-generic x86_64, glibc 2.39</td></tr>
+<tr><td>Python</td><td>3.12.12</td></tr>
+<tr><td>SPAdes</td><td>4.2.0</td></tr>
+<tr><td>FastQC</td><td>0.12.1</td></tr>
+<tr><td>fastp</td><td>1.1.0</td></tr>
+<tr><td>QUAST</td><td>5.3.0</td></tr>
+<tr><td>CheckM2</td><td>1.1.0; run through Galaxy Europe</td></tr>
+<tr><td>BUSCO</td><td>6.0.0</td></tr>
+<tr><td>BUSCO dependency</td><td>HMMER hmmsearch 3.4; Prodigal 2.6.3</td></tr>
+<tr><td>SPAdes resources</td><td>8 threads; 24 GB RAM</td></tr>
+</table>
+<div class="note">The SPAdes command below is the recorded command used in the project. BUSCO settings are reproduced from the exported BUSCO JSON. CheckM2 was run through Galaxy Europe; the exact Galaxy invocation is therefore not represented as a local shell command here.</div>
+
+<h2 id="data">2. Dataset and directory structure</h2>
+<p><b>Input:</b> NCBI SRA accession <b>SRR2584863</b>; paired-end Illumina reads, 150 bp + 150 bp.</p>
+<pre><button class="copy" onclick="copyCode(this)">Copy</button><code><span class="comment"># Project directory</span>
+<span class="cmd">cd</span> /home/ali/for_tezis
+
+<span class="comment"># Raw reads</span>
+SRR2584863_1.fastq.gz
+SRR2584863_2.fastq.gz
+
+<span class="comment"># Clean reads</span>
+fastp/clean_R1.fastq.gz
+fastp/clean_R2.fastq.gz
+
+<span class="comment"># SPAdes assembly</span>
+fastp/assembly_result/contigs.fasta</code></pre>
+
+<h3>Raw-read download</h3>
+<pre><button class="copy" onclick="copyCode(this)">Copy</button><code><span class="comment"># Download paired-end reads from ENA FTP</span>
+<span class="cmd">cd</span> /home/ali/for_tezis
+<span class="cmd">wget</span> -nc ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR258/003/SRR2584863/SRR2584863_2.fastq.gz
+<span class="cmd">wget</span> -nc ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR258/003/SRR2584863/SRR2584863_1.fastq.gz</code></pre>
+
+<h2 id="fastqc">3. Raw-read QC — FastQC 0.12.1</h2>
+<p>FastQC was run separately on both raw paired-end FASTQ files. The supplied reports confirm FastQC v0.12.1. R1 showed warnings for per-base sequence content, per-sequence GC content and adapter content; R2 showed additional failures in per-base quality, per-tile quality and per-base sequence content. These flags motivated the subsequent filtering step.</p>
+<pre><button class="copy" onclick="copyCode(this)">Copy</button><code><span class="comment"># Raw read quality assessment</span>
+<span class="cmd">cd</span> /home/ali/for_tezis
+<span class="cmd">mkdir</span> -p fastqc_results
+
+<span class="cmd">fastqc</span> \
+  SRR2584863_1.fastq.gz \
+  SRR2584863_2.fastq.gz \
+  -o fastqc_results</code></pre>
+
+<h2 id="fastp">4. Read filtering and trimming — fastp 1.1.0</h2>
+<p>The recorded fastp run started with 3.106518 million reads (465.977700 Mb) and retained 2.602652 million reads (83.780361%). Mean read length decreased from 150 bp to 142 bp. Q20 increased from 89.165974% to 96.208397%, and Q30 from 81.633512% to 89.136192%.</p>
+<pre><button class="copy" onclick="copyCode(this)">Copy</button><code><span class="comment"># Paired-end quality filtering and adapter processing</span>
+<span class="cmd">fastp</span> \
+  -i SRR2584863_1.fastq.gz \
+  -I SRR2584863_2.fastq.gz \
+  -o clean_R1.fastq.gz \
+  -O clean_R2.fastq.gz \
+  -h fastp_report.html \
+  -j fastp_report.json \
+  -w 8</code></pre>
+
+<table>
+<tr><th>fastp metric</th><th>Before</th><th>After</th></tr>
+<tr><td>Reads</td><td>3.106518 M</td><td>2.602652 M</td></tr>
+<tr><td>Bases</td><td>465.977700 Mb</td><td>372.036560 Mb</td></tr>
+<tr><td>Mean length</td><td>150 bp</td><td>142 bp</td></tr>
+<tr><td>Q20</td><td>89.165974%</td><td>96.208397%</td></tr>
+<tr><td>Q30</td><td>81.633512%</td><td>89.136192%</td></tr>
+<tr><td>GC</td><td>50.782242%</td><td>50.640517%</td></tr>
+<tr><td>Passed reads</td><td colspan="2">83.780361%</td></tr>
+</table>
+
+<h2 id="spades">5. Genome assembly — SPAdes 4.2.0</h2>
+<p>The cleaned paired-end reads were assembled with SPAdes using <code>--careful</code>, 8 threads and 24 GB RAM. The command below preserves the recorded absolute paths.</p>
+<pre><button class="copy" onclick="copyCode(this)">Copy</button><code><span class="comment"># SPAdes 4.2.0 — bacterial genome assembly</span>
+<span class="cmd">/home/ali/miniforge3/envs/bacteria_assembly_env/bin/spades.py</span> \
+  -1 /home/ali/for_tezis/fastp/clean_R1.fastq.gz \
+  -2 /home/ali/for_tezis/fastp/clean_R2.fastq.gz \
+  -o /home/ali/for_tezis/fastp/assembly_result \
+  --careful \
+  --threads 8 \
+  --memory 24</code></pre>
+
+<div class="note"><b>Output used for downstream assessment:</b> <code>/home/ali/for_tezis/fastp/assembly_result/contigs.fasta</code>. The BUSCO JSON records a copied/alternate path (<code>/home/ali/for_tezis/assembly_result/contigs.fasta</code>); the sequence filename is the same.</div>
+
+<h2 id="quast">6. Assembly statistics — QUAST 5.3.0</h2>
+<p>The supplied QUAST report contains the final assembly statistics. Importantly, its report uses a <code>minContig=500</code> display threshold for the main statistics, while the “&ge;0 bp” metric records all 208 contigs. Therefore the final assembly was not silently reduced to 69 contigs.</p>
+<pre><button class="copy" onclick="copyCode(this)">Copy</button><code><span class="comment"># QUAST assembly assessment</span>
+<span class="cmd">quast</span> \
+  /home/ali/for_tezis/fastp/assembly_result/contigs.fasta \
+  -o /home/ali/for_tezis/fastp/quast_result \
+  --threads 8</code></pre>
+<table>
+<tr><th>Metric</th><th>Result</th></tr>
+<tr><td>Total assembly length</td><td>4,576,410 bp</td></tr>
+<tr><td>Contigs (all, &ge;0 bp)</td><td>208</td></tr>
+<tr><td>Contigs in QUAST main display (&ge;500 bp)</td><td>69</td></tr>
+<tr><td>Largest contig</td><td>348,112 bp</td></tr>
+<tr><td>N50</td><td>151,564 bp</td></tr>
+<tr><td>N90</td><td>40,795 bp</td></tr>
+<tr><td>L50</td><td>11</td></tr>
+<tr><td>L90</td><td>33</td></tr>
+<tr><td>GC</td><td>50.72%</td></tr>
+<tr><td>Gaps</td><td>0%</td></tr>
+<tr><td>N's</td><td>0</td></tr>
+</table>
+
+<h2 id="checkm2">7. Completeness and contamination — CheckM2 1.1.0</h2>
+<p>CheckM2 was run on Galaxy Europe. The recorded result was <b>100.0% completeness</b> and <b>0.11% contamination</b>, with a coding density of approximately 88% and 4,328 predicted coding sequences. These values support a highly complete draft with very low estimated contamination.</p>
+<table>
+<tr><th>CheckM2 metric</th><th>Result</th></tr>
+<tr><td>Completeness</td><td class="ok">100.0%</td></tr>
+<tr><td>Contamination</td><td class="ok">0.11%</td></tr>
+<tr><td>Coding density</td><td>88%</td></tr>
+<tr><td>Coding sequences</td><td>4,328</td></tr>
+<tr><td>Genome size</td><td>4.576 Mb</td></tr>
+<tr><td>Contigs</td><td>208</td></tr>
+</table>
+<div class="note">The CheckM2 result is preserved as a reported Galaxy result rather than represented by an invented command line. To reproduce it exactly, select CheckM2 1.1.0 in Galaxy Europe and use the same input assembly and the same tool parameters recorded in the Galaxy history.</div>
+
+<h2 id="busco">8. Conserved-gene completeness — BUSCO 6.0.0</h2>
+<p>The BUSCO JSON provides the exact run configuration. The analysis used <code>bacteria_odb10</code> (creation date 2024-01-08; 124 BUSCO markers; 4,085 species/genomes), <code>prok_genome_prod</code> mode, Prodigal as gene predictor, 8 CPUs, translation table 11/4 settings, and a 10-bp contig break.</p>
+<pre><button class="copy" onclick="copyCode(this)">Copy</button><code><span class="comment"># BUSCO settings recorded in the exported JSON</span>
+Input:
+  /home/ali/for_tezis/assembly_result/contigs.fasta
+
+Output:
+  /home/ali/for_tezis/busco_result
+
+Mode:
+  prok_genome_prod
+
+Lineage:
+  /home/ali/for_tezis/busco_downloads/lineages/bacteria_odb10
+
+CPU:
+  8
+
+Gene predictor:
+  Prodigal
+
+Prodigal genetic code:
+  11,4
+
+Contig break:
+  10</code></pre>
+
+<table>
+<tr><th>BUSCO result</th><th>Value</th></tr>
+<tr><td>Complete</td><td class="ok">100.0% (124/124)</td></tr>
+<tr><td>Single-copy complete</td><td class="ok">100.0% (124/124)</td></tr>
+<tr><td>Duplicated</td><td>0.0% (0)</td></tr>
+<tr><td>Fragmented</td><td>0.0% (0)</td></tr>
+<tr><td>Missing</td><td>0.0% (0)</td></tr>
+<tr><td>BUSCO lineage</td><td>bacteria_odb10</td></tr>
+</table>
+
+<div class="note"><b>Reproducibility note:</b> The exported BUSCO JSON records the exact parameters but does not provide the original shell command line. The block above therefore reports the recorded configuration rather than inventing a command that was not preserved.</div>
+
+<h2 id="coverage">9. Coverage — recorded estimate</h2>
+<p>Using the post-filtering total of 372,036,560 bases and the 4,576,410-bp assembly, the estimated average sequencing depth is approximately <b>81.3×</b>:</p>
+<pre><button class="copy" onclick="copyCode(this)">Copy</button><code><span class="comment"># Estimated average depth = filtered bases / assembly size</span>
+372036560 / 4576410 = 81.32x</code></pre>
+<div class="note">This is an arithmetic estimate from total filtered bases. It is not a per-base mapping depth profile. A true depth distribution requires mapping the reads to the assembly and calculating depth with a mapper/samtools workflow.</div>
+
+
+<h2 id="author">Author</h2>
+<div class="card" style="line-height:1.75">
+  <div style="font-size:20px;font-weight:700;margin-bottom:12px;">Murodali Boboqulov</div>
+  <div><b>Tayanch doktorant</b></div>
+  <div><b>Sholichilik ilmiy-tadqiqot instituti</b>, O‘zbekiston</div>
+  <div>Toshkent viloyati, O‘rtachirchiq tumani</div>
+  <br>
+  <div><b>Kichik ilmiy xodim</b></div>
+  <div><b>O‘zR FA Mikrobiologiya instituti</b>, O‘zbekiston</div>
+  <div>Toshkent, A. Qodiriy ko‘chasi 7B</div>
+  <br>
+  <div>Email: <a href="mailto:bmurodali97@gmail.com" style="color:#58a6ff;">bmurodali97@gmail.com</a></div>
+  <div>ORCID: <a href="https://orcid.org/0000-0001-7222-5661" style="color:#58a6ff;" target="_blank" rel="noopener">0000-0001-7222-5661</a></div>
+  <div>Web of Science: <b>AGZ-6104-2022</b></div>
+</div>
+
+<h2 id="summary">10. Final reproducibility summary</h2>
+<div class="grid">
+<div class="stat"><span class="muted">Raw reads</span><b>3.1065 M</b>paired-end reads</div>
+<div class="stat"><span class="muted">Filtered reads</span><b>2.6027 M</b>83.78% retained</div>
+<div class="stat"><span class="muted">Assembly</span><b>4.576 Mb</b>208 contigs</div>
+<div class="stat"><span class="muted">N50</span><b>151.6 kb</b>N90 40.8 kb</div>
+<div class="stat"><span class="muted">CheckM2</span><b>100 / 0.11%</b>completeness / contamination</div>
+<div class="stat"><span class="muted">BUSCO</span><b>124/124</b>complete single-copy</div>
+</div>
+
+<h3>Workflow order</h3>
+<pre><button class="copy" onclick="copyCode(this)">Copy</button><code><span class="comment"># Reproducibility workflow</span>
+RAW FASTQ
+   |
+   v
+FastQC 0.12.1
+   |
+   v
+fastp 1.1.0
+   |
+   v
+clean_R1.fastq.gz + clean_R2.fastq.gz
+   |
+   v
+SPAdes 4.2.0 (--careful)
+   |
+   v
+contigs.fasta
+   |
+   +----> QUAST 5.3.0
+   |
+   +----> CheckM2 1.1.0 (Galaxy Europe)
+   |
+   +----> BUSCO 6.0.0 + bacteria_odb10
+   |
+   v
+FINAL DRAFT ASSEMBLY QUALITY ASSESSMENT</code></pre>
+
+<div class="footer">
+<b>Reproducibility principle:</b> preserve the raw FASTQ files, exact software versions, command lines, databases/lineages, parameters, output FASTA and quality reports together. Absolute paths in the recorded commands are machine-specific; when reproducing on another computer, replace them with the corresponding local paths while keeping the filenames and parameters unchanged.
+</div>
+</main>
+</body>
+</html>
